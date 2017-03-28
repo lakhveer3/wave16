@@ -25,12 +25,14 @@ export default class Bob extends React.Component{
      var b=base64.decode(a.split('.')[1]);
      var c=utf8.decode(b);
      var d=a.split("#")[1];
-    this.state={
+     this.state={
       userName:c,
       channelsList:[],
       currentChannel:"",
       unreadCount:{},
       lat:{},
+      projectStatus:[],
+      UserState:[],
       avatars:{},
       snackbarData:"",
       openSnackbar:false,
@@ -100,6 +102,51 @@ export default class Bob extends React.Component{
     this.context.socket.on('errorOccured',function(data){
       that.snackbar(data);
     });
+    this.context.socket.on('getStatus',function(getstatus){
+     // console.log(that.state.projectStatus,"projectStatus before");
+    console.log(getstatus,"getStatus");
+    that.setState({projectStatus:getstatus});
+    });
+    this.context.socket.on('userStatus',(message,channel)=>{
+      //console.log(message.userName,"userStatus");
+     // that.snackbar(message.userName +" gets " +message.Status);
+      console.log(channel,"channel name",message);
+      
+      let update = [];
+      let updated =[];
+      var name;
+      var status;
+      if(message.userName !== "undefiend"){
+          console.log(message.userName,"username");
+          console.log(message.Status,"status");
+          name = message.userName;
+          status = message.Status;
+          let statusGet = that.state.projectStatus;
+            // console.log(statusGet,"array");
+          let update = statusGet.map((item,i)=>{
+          var obj={};
+          obj.projectName =item.projectName;
+          console.log(item.users,"users before");
+          if(channel === item.projectName){
+            if(item.users == null){
+              item.users = {};
+              // item.users[message.userName] = message.Status;
+              }
+            else
+              item.users[message.userName] = message.Status;
+            }
+            console.log(item.users,"users after");
+            obj.users = item.users;
+            updated.push(obj);  
+               
+      });
+           
+      console.log(updated,"object"); 
+       // this.setState({projectStatus:update});
+        }
+        this.setState({projectStatus:updated});
+        // this.setState({userState:message});
+       });
     this.context.socket.emit("login",this.state.userName,cookie.load('projectName'));
   }
   
@@ -184,7 +231,10 @@ export default class Bob extends React.Component{
                     gitChannelStatus={this.state.gitChannelStatus}
                     repos={this.state.repos}
                     reposUpdate={this.handleReposChange}
-                    handleToggle={this.handleToggle.bind(this)}                                                             
+                    handleToggle={this.handleToggle.bind(this)} 
+                    projectStatus = {this.state.projectStatus}
+                    currentProject ={this.state.currentChannel}
+                    UserStatus={this.state.UserState}                                                            
                   /></div>
               </SwipeableViews>              
             </Col>

@@ -294,6 +294,23 @@ export default class ChannelList extends React.Component{
     channels = channels.map((item,i)=>{ //get all group channel without project name.
       return item.split('#')[1];
     });
+    let projectmemberlist = this.props.projectStatus.map((item,i)=>{
+      let arr={name:[],status:[]}
+      if(item.projectName == this.props.currentProject.split('#')[0]){
+         for(var prop in item.users){
+         
+            arr.name.push(prop);
+            arr.status.push(item.users[prop]);
+           
+        }
+      }
+        let lists=[];    
+        for(let i=0;i<arr.name.length;i++)
+        {
+          lists.push(<ListItem key={i} primaryText={arr.name[i]} secondaryText={arr.status[i]}/>);
+        }
+        return lists;
+    });
 
     let DMListfiltered = DMList.map((item,i)=>{  //get the dm filtered list.
       let index = item.split('#').indexOf(this.props.userName);
@@ -358,6 +375,9 @@ export default class ChannelList extends React.Component{
                                   <IconButton iconStyle={{color:"white"}} onTouchTap={this.handleAddDM} style={{marginLeft:"0px"}}><AddCircle/></IconButton>
                                 </Subheader>
                                 {DMListfiltered}     
+                              </SelectableList>
+                              <SelectableList>
+                                {projectmemberlist}    
                               </SelectableList>
                             </Col>
                           </Row>

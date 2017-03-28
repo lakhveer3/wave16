@@ -13,6 +13,7 @@ let LatList = require('./../model/lat.schema.js'),
 const ChannelInfo = require('./../model/channelinfo.schema.js');
 let GoogleAToken = require('./../model/googleatoken.schema.js');
 let bookmarkData = require('./../model/bookmarkSchema.js');
+var statusChange = require('./../onUserStatusChange');
 const GitChannel=require('./../model/gitchannel.schema.js');
 let unreadCount = {};
 let currentChannelName = "";
@@ -38,23 +39,10 @@ module.exports = function(io, socket) {
     sub.on('message', handleMessage);
     sub.on('subscribe', handleSubscribe);
     sub.on('unsubscribe', handleUnsubscribe);
+    socket.on('login',handleLogin.bind(null,socket));
 
     //Below are the event handlers for socket events
-    socket.on('send message', handleSendMessage); //handling message sent from user.
-    socket.on('typing', handleTyping); //handling typing event from user.
-    socket.on('disconnect', handleDisconnect); //handling disconnecting event from user.
-    socket.on('getUnreadNotification', handlegetUnreadNotification); //request for unreadnotifications for a user.
-    socket.on('receiveChatHistory', handleReceiveChatHistory); //request for sending chat history by user. FIXME:put new function from 6th sprint
-    socket.on('getResetNotification', handleResetNotification); //request for resetting chat history. FIXMEput new function from 6th sprint.
-    socket.on('feedback', feedbackManager);
-    socket.on('newChannel', newChannel);
-    socket.on('remainderAccepted', tokenSearch);
-    socket.on('saveBookmarks', saveBookmarks);
-    socket.on('deleteBookmarks', deleteBookmarks);
-    socket.on('taskArray', saveTaskArray);
-    socket.on('subscribeMe', handleSubscribeMe);
-    socket.on('deleteMessage' , handleDeleteMessage);
-    socket.on('editMessage', handleEditMessage);
+    
 
     function handleSubscribeMe(channelName) {
         //console.log("subscribing socket: ", socket.id, " to ", channelName);
@@ -410,13 +398,20 @@ module.exports = function(io, socket) {
     }
 
     function handleMessage(channel, message) { //message is text version of the message object.
-        message = JSON.parse(message);
-        //console.log("received in redis topic: ", message);
-
-        if (message.hasOwnProperty('newDM'))
-            socket.emit('joinedNewChannel', message);
-        else
-            socket.emit('takeMessage', channel, message);
+         message = JSON.parse(message);
+    console.log(channel,"channel in handlemessage");
+   // message["currentUser"]=socket.currentUser;
+    if (message.hasOwnProperty('userName')){
+        socket.emit('userStatus',message,channel);
+        //console.log(message,"message"); 
+    }
+    
+    else if (message.hasOwnProperty('newDM')){
+        socket.emit('joinedNewChannel', message);
+    }
+    else{
+    socket.emit('takeMessage', channel, message);
+    }
     }
 
     function handleSubscribe(channel, count) { //count is the total number channels user is subscribed to.
@@ -493,9 +488,12 @@ module.exports = function(io, socket) {
         obj[prev] = new Date();
         LatList.findOneAndUpdate({ username: currentUser }, { $set: obj }, function(err, reply) {
 
-            UserInfo.findOneAndUpdate({ username: currentUser }, { $set: { currentChannel: currentChannelName } }, function(err, reply) {});
+        UserInfo.findOneAndUpdate({ username: currentUser }, { $set: { currentChannel: currentChannelName } }, function(err, reply) {});
         });
-
+        console.log(socket.currentUser ,"gets disconnected");
+        statusChange(socket.currentUser,"offline");
+        sub.quit();
+        pub.quit();
     }
 
     function handlegetUnreadNotification(msg) { //FIXME: Write again.
@@ -570,8 +568,68 @@ module.exports = function(io, socket) {
         });
     }
 
-    socket.on('login', function(usrname) {
-        //console.log("first line onlt", usrname,projectName);
+    function handleLogin(socket, usrname) {
+    socket.currentUser=usrname;
+    //console.log(socket.currentUser,"CURRENTUSER");
+    socket.on('disconnect', handleDisconnect.bind(null,socket));
+    socket.on('send message', handleSendMessage); //handling message sent from user.
+    socket.on('typing', handleTyping); //handling typing event from user.
+    socket.on('getUnreadNotification', handlegetUnreadNotification); //request for unreadnotifications for a user.
+    socket.on('receiveChatHistory', handleReceiveChatHistory); //request for sending chat history by user. FIXME:put new function from 6th sprint
+    socket.on('getResetNotification', handleResetNotification); //request for resetting chat history. FIXMEput new function from 6th sprint.
+    socket.on('feedback', feedbackManager);
+    socket.on('newChannel', newChannel);
+    socket.on('remainderAccepted', tokenSearch);
+    socket.on('saveBookmarks', saveBookmarks);
+    socket.on('deleteBookmarks', deleteBookmarks);
+    socket.on('taskArray', saveTaskArray);
+    socket.on('subscribeMe', handleSubscribeMe);
+    socket.on('deleteMessage' , handleDeleteMessage);
+    socket.on('editMessage', handleEditMessage);
+    //console.log("first line onlt", usrname,projectName);
+    ChannelInfo.find({},function(err,rep){
+        let projects=[];
+        let getProject=[];
+        let result=[];
+        rep.forEach(function(data,i){
+            if(data.members.includes(usrname)){
+            projects.push(data.channelName.split('#')[0]);
+        }
+        });
+        projects = projects.filter(function(item,index,projects){
+        return projects.indexOf(item) == index;
+        });
+        async.each(projects,function(project,callback){
+         console.log(project,"here project name only")
+        pub.hgetall(project+":s3",function(err,result){
+            // console.log(result,"result");
+        var obj={
+        projectName:project,
+        users:result
+        }
+        getProject.push(obj);
+        callback();
+        });
+
+    },
+    function(err){
+        if(err){
+        console.log("err",err);
+
+        }
+        else{
+         // console.log(getProject) 
+        socket.emit('getStatus',getProject);
+        console.log("there is no error");
+         
+        }
+        })
+        projects.forEach(function(project,i){
+        console.log("subscribing",project);
+        sub.subscribe(project);
+        })
+    })
+        statusChange(usrname,"online");
         sub.subscribe('general');
         currentUser=usrname;
         let lat = null;
@@ -625,22 +683,12 @@ module.exports = function(io, socket) {
               socket.emit('channelList', channelList, unreadCount, lat,currentChannelName,avatars,gitChannelStatus,repos);
             })
             })
-            
-           // function getAvatars(callback){
-             
-            //}
-            // async.waterfall([getAvatars],function(err,reply){
-            //   console.log(avatars,"Login");
-              
-            // })
-                //client.lpush("###"+usrname,socket);
-                //console.log("Login",avatars);
                 
             });
           });
 
          })
-   })
+   }
 
     socket.on('currentChannel', function(currentChannel, prevChannel, userName) {
 
